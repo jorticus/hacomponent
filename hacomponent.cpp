@@ -1,13 +1,9 @@
 
 #include "hacomponent.h"
 #include <math.h>
-#include <ESP8266WiFi.h>
 #include <ArduinoJson.h>
 
 extern Stream& Debug;
-
-extern const char* g_friendly_name;
-extern const char* g_fw_version;
 
 template<Component c> const char* HACompBase<c>::m_component                        = nullptr;
 template<>            const char* HACompBase<Component::Sensor>::m_component        = "sensor";
@@ -39,14 +35,22 @@ HAAvailabilityComponent*                        HAAvailabilityComponent::inst = 
 const char*                                     HAAvailabilityComponent::ONLINE = "online";
 const char*                                     HAAvailabilityComponent::OFFLINE = "offline";
 
+void HAComponentManager::OnMessageReceived(char* topic, byte* payload, unsigned int length) {
+    payload[length] = '\0';
+
+    // Debug.print("MQTT RX: ");
+    // Debug.println((char*)payload);
+
+    String topic_s(topic);
+    String payload_s((char*)payload);
+    HAComponent<Component::Switch>::ProcessMqttTopic(topic_s, payload_s);
+}
 
 static void getDeviceInfo(JsonObject& json, ComponentContext& context) {
     auto& deviceInfo = json.createNestedObject("device");
 
-    String id = WiFi.macAddress();
-
-    deviceInfo["identifiers"]   = id;
-    deviceInfo["name"]          = context.device_name;
+    deviceInfo["identifiers"]   = context.mac_address;
+    deviceInfo["name"]          = context.friendly_name;
     deviceInfo["sw_version"]    = context.fw_version;
     deviceInfo["model"]         = context.model;
     deviceInfo["manufacturer"]  = context.manufacturer;
@@ -73,7 +77,7 @@ void HACompBase<c>::getConfigInfo(JsonObject& json)
 //         "%s/%s/%s/state\0", 
 //         config.device_name,
 //         m_component, 
-//         m_name);
+//         m_id);
 
 //     return String(state_topic);
 // }
@@ -84,7 +88,7 @@ void HACompBase<c>::Initialize()
     char state_topic[TOPIC_BUFFER_SIZE];
     snprintf(state_topic, sizeof(state_topic), 
         "%s/%s/%s/state\0", 
-        context.device_name, m_component, m_name);
+        context.device_name, m_component, m_id);
     m_state_topic = String(state_topic);
 }
 
@@ -97,7 +101,7 @@ void HACompBase<c>::PublishConfig(bool present)
 
     snprintf(topic, sizeof(topic), 
         "homeassistant/%s/%s/%s/config\0", 
-        m_component, context.device_name, m_name);
+        m_component, context.device_name, m_id);
 
     if (present) {
         StaticJsonBuffer<JSON_BUFFER_SIZE> jsonBuffer;
@@ -112,23 +116,22 @@ void HACompBase<c>::PublishConfig(bool present)
         // https://www.home-assistant.io/docs/mqtt/discovery/
         getConfigInfo(json);
 
-        // // Prepend the AirNode friendly name to the sensor name
-        // char name[TOPIC_BUFFER_SIZE];
-        // snprintf(name, sizeof(name),
-        //     "%s %s",
-        //     context.friendly_name,
-        //     json.get<char*>("name"));
-        // json["name"] = String((const char*)name);
-
         // Add unique ID for component
         char uid[TOPIC_BUFFER_SIZE];
         snprintf(uid, sizeof(uid),
             "%s_%s\0",
-            context.device_name, m_name);
+            context.device_name, m_id);
+        
         json["unique_id"] = uid;
+        json["object_id"] = uid; // Used for generation of entity_id
 
-        // Use the unique name instead of friendly name for entity IDs
-        json["name"] = String(uid);
+        //json["entity_category"] = "config"/"diagnostic";
+
+        if (m_icon != nullptr) {
+            // Optional icon for HA UI
+            // eg. "mdi:plug"
+            json["icon"] = m_icon;
+        }
 
         // Add device information
         getDeviceInfo(json, context);
@@ -161,7 +164,7 @@ void HACompBase<c>::PublishConfig(bool present)
         // Also unpublish the parent node
         snprintf(topic, sizeof(topic), 
             "homeassistant/%s/%s/%s\0", 
-            m_component, context.device_name, m_name);
+            m_component, context.device_name, m_id);
         context.client.publish(topic, nullptr, 0, true);
 
         // And finally clear the current state
@@ -172,11 +175,12 @@ void HACompBase<c>::PublishConfig(bool present)
     //Led::SetBuiltin(false);
 }
 
-HAComponent<Component::Switch>::HAComponent(ComponentContext& context, const char* name, std::function<void(boolean)> callback) :
-    HACompBase(context, name),
+HAComponent<Component::Switch>::HAComponent(ComponentContext& context, const char* id, const char* name, std::function<void(boolean)> callback, const char* icon) :
+    HACompBase(context, id, name),
     m_callback(callback),
     m_state(false)
 {
+    m_icon = icon;
     HAComponent<Component::Switch>::m_switches.push_back(this);
 }
 
@@ -187,7 +191,7 @@ void HAComponent<Component::Switch>::Initialize()
     char cmd_topic[TOPIC_BUFFER_SIZE];
     snprintf(cmd_topic, sizeof(cmd_topic), 
         "%s/%s/%s/ctrl\0", 
-        context.device_name, m_component, m_name);
+        context.device_name, m_component, m_id);
     m_cmd_topic = String(cmd_topic);
 }
 
@@ -219,7 +223,7 @@ void HAComponent<Component::Switch>::ReportState()
 void HAComponent<Component::Switch>::ProcessMqttTopic(String& topic, String& value)
 {
     for (auto* sw : m_switches) {
-        Debug.print("CHECK: "); Debug.println(sw->m_cmd_topic);
+        //Debug.print("CHECK: "); Debug.println(sw->m_cmd_topic);
         if (sw->m_cmd_topic == topic) {
             if (value.equalsIgnoreCase(ON)) {
                 sw->SetState(true);
@@ -228,7 +232,8 @@ void HAComponent<Component::Switch>::ProcessMqttTopic(String& topic, String& val
                 sw->SetState(false);
             }
             else {
-                Debug.println("Invalid payload received for switch");
+                Debug.print("Invalid payload received for switch: ");
+                Debug.println(value);
             }
 
             break;
@@ -337,7 +342,7 @@ void HAComponent<Component::Sensor>::Update(float value)
         m_samples = 0;
         m_sum = 0.f;
 
-        Debug.print(m_name); Debug.print(": "); Debug.println(avg_value);
+        //Debug.print(m_id); Debug.print(": "); Debug.println(avg_value);
 
         // Only publish if the value is significant
         if (std::isfinite(avg_value) && ((m_hysteresis == 0.0f) || (avg_value <= m_last_value - m_hysteresis || avg_value >= m_last_value + m_hysteresis))) {
@@ -365,8 +370,8 @@ void HAComponent<Component::BinarySensor>::getConfigInfo(JsonObject& json)
 
     switch (m_sensor_class) {
         // TODO...
-        default:
-            Debug.println("WARNING: Device class unsupported!");
+        // default:
+        //     Debug.println("WARNING: Device class unsupported!");
     }
 
     if (device_class != nullptr) {
@@ -376,11 +381,11 @@ void HAComponent<Component::BinarySensor>::getConfigInfo(JsonObject& json)
 
 void HAComponent<Component::BinarySensor>::ReportState(bool state)
 {
-    PublishState(state ? "on" : "off");
+    PublishState(state ? "ON" : "OFF");
 }
 
 HAAvailabilityComponent::HAAvailabilityComponent(ComponentContext& context)
-    : HACompBase(context, "status")
+    : HACompBase(context, "status", "Status")
 {
     HAAvailabilityComponent::inst = this;
 }
@@ -390,7 +395,7 @@ void HAAvailabilityComponent::Initialize()
     char state_topic[TOPIC_BUFFER_SIZE];
     snprintf(state_topic, sizeof(state_topic), 
         "%s/%s\0", 
-        context.device_name, m_name);
+        context.device_name, m_id);
     m_state_topic = String(state_topic);
 }
 

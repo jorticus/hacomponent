@@ -14,6 +14,8 @@ It supports the following component classes:
 First define a context using your pubsub client:
 
 ```c
+Stream& Debug = Serial;
+
 PubSubClient client;
 ComponentContext mqtt_context(client);
 ```
@@ -25,14 +27,14 @@ Define your HomeAssistant components.
 HAAvailabilityComponent availability(mqtt_context);
 
 // You can define any number of sensors:
-HAComponent<Component::Sensor> sensor_temp(mqtt_context,  "Temp",  TEMP_SAMPLE_INTERVAL_MS, 0.f, SensorClass::Temperature);   // Temperature Sensor
-HAComponent<Component::Sensor> sensor_humid(mqtt_context, "Humid", TEMP_SAMPLE_INTERVAL_MS, 0.f, SensorClass::Humidity);      // Humidity Sensor
+HAComponent<Component::Sensor> sensor_temp(mqtt_context, "temp1", "Temperature",  TEMP_SAMPLE_INTERVAL_MS, 0.f, SensorClass::Temperature);   // Temperature Sensor
+HAComponent<Component::Sensor> sensor_humid(mqtt_context, "humid1", "Humidity", TEMP_SAMPLE_INTERVAL_MS, 0.f, SensorClass::Humidity);      // Humidity Sensor
 
 // And any number of switches, with inline or global callbacks:
-HAComponent<Component::Switch> switch_fan(mqtt_context, "fan", [](bool state) {
+HAComponent<Component::Switch> switch_fan(mqtt_context, "fan", "Fan" [](bool state) {
   Debug.println(state ? "Fan on!" : "Fan off!");
   digitalWrite(FAN_PIN, state);
-});
+}, "mdi:fan");
 ```
 
 To get things started, you need to connect to your MQTT client and use the HAAvailabilityComponent's last will topic, 
@@ -40,48 +42,43 @@ and set up a message received callback that forwards messages to the switch comp
 
 ```c
 
-void onMessageReceived(char* topic, byte* payload, unsigned int length)
-{
-	payload[length] = '\0';
-	Debug.println((char*)payload);
-
-	String topic_s(topic);
-	String payload_s((char*)payload);
-	HAComponent<Component::Switch>::ProcessMqttTopic(topic_s, payload_s);
-}
-
 void setup() {
     ...
     
+    // Important: MAC address string reference must stick around forever
+    static String mac = WiFi.macAddress();
+    context.mac_address = mac.c_str();
+
     // Metadata to report to HomeAssistant
-    mqtt_context.device_name = "your_device";
-    mqtt_context.friendly_name = "Your Device";
+    mqtt_context.device_name = "your_device";   // Should be lower_case
     mqtt_context.fw_version = "1.0.0";
-    mqtt_context.manufacturer = "Manufacturer";
+    mqtt_context.friendly_name = "Your Device";
     mqtt_context.model = "Device Model";
+    mqtt_context.manufacturer = "Manufacturer";
     
     // Initialize each component with the above metadata
-    HACompItem::InitializeAll();
+    HAComponentManager::InitializeAll();
 
-    client.setCallback(onMessageReceived);
+    // HA config payloads need more than the default of 256 bytes
+    client.setBufferSize(HA_MQTT_MAX_PACKET_SIZE);
+
+    client.setCallback(HAComponentManager::OnMessageReceived);
     
     while (!client.connected()) {
-			String will_topic 		= HAAvailabilityComponent::inst->getWillTopic();
-			const char* will_msg 	= HAAvailabilityComponent::OFFLINE;
-			uint8_t will_qos 		= 0;
-			bool will_retain 		= true;
+        String will_topic 		= HAAvailabilityComponent::inst->getWillTopic();
+        const char* will_msg 	= HAAvailabilityComponent::OFFLINE;
+        uint8_t will_qos 		= 0;
+        bool will_retain 		= true;
 
-			connected = client.connect(
-				config.device_name, config.m_mqtt_user, config.m_mqtt_password, 
-				will_topic.c_str(), will_qos, will_retain, will_msg);
-
+        connected = client.connect(
+            config.device_name, config.m_mqtt_user, config.m_mqtt_password, 
+            will_topic.c_str(), will_qos, will_retain, will_msg);
     }
     
     // Now MQTT is connected, we can publish the components to HomeAssistant:
-    sensor_temp.PublishConfig();
-    sesnor_humid.PublishConfig();
-    switch_fan.PublishConfig();
-    availability.PublishConfig();
+    HAComponentManager::PublishConfigAll();
+
+     // And report that our device is now alive:
     availability.Connect();
     
 }

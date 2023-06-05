@@ -7,12 +7,15 @@
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
+#define HA_MQTT_MAX_PACKET_SIZE (1024)
+
 #define TOPIC_BUFFER_SIZE (80)
-#define JSON_BUFFER_SIZE (MQTT_MAX_PACKET_SIZE)
+#define JSON_BUFFER_SIZE (HA_MQTT_MAX_PACKET_SIZE)
 
 class ComponentContext {
 public:
     PubSubClient& client;
+    const char* mac_address;
     const char* device_name;
     const char* friendly_name;
     const char* fw_version;
@@ -92,17 +95,36 @@ enum class BinarySensorClass {
 //     static const char* name;
 // }
 
+// Abstract class that allows us to initialize and publish
+// any type of component
 class HACompItem
 {
-public:
+    friend class HAComponentManager;
+
+protected:
     static std::vector<HACompItem*> m_components;
 
     virtual void Initialize() = 0;
+    virtual void PublishConfig(bool present) = 0;
+};
+
+// Manager class for interacting with all registered components
+class HAComponentManager: public HACompItem
+{
+public:
     static void InitializeAll() {
-        for (auto item : m_components) {
+        for (auto item : HACompItem::m_components) {
             item->Initialize();
         }
     }
+
+    static void PublishConfigAll(bool present = true) {
+        for (auto item : HACompItem::m_components) {
+            item->PublishConfig(present);
+        }
+    }
+
+    static void OnMessageReceived(char* topic, byte* payload, unsigned int length);
 };
 
 // Base class to get around templating quirks. Do not use directly.
@@ -112,6 +134,8 @@ class HACompBase : public HACompItem
 protected:
     const char*     m_device_class;
     const char*     m_name;
+    const char*     m_id;
+    const char*     m_icon;
     String          m_state_topic;
     ComponentContext& context;
 
@@ -121,14 +145,15 @@ protected:
    // virtual String getStatusTopic();
 
 public:
-    HACompBase(ComponentContext& context, const char* name)
-        : m_name(name), context(context)
+    HACompBase(ComponentContext& context, const char* id, const char* name)
+        : m_id(id), m_name(name), context(context)
     {
         m_components.push_back(this);
     }
 
-    virtual void Initialize();
-    void PublishConfig(bool present = true);
+    void Initialize() override;
+    void PublishConfig(bool present = true) override;
+
     void PublishState(const char* value, bool retain = true);
     void ClearState();
 };
@@ -161,16 +186,17 @@ protected:
 
     virtual void getConfigInfo(JsonObject& json);
 public:
-    HAComponent(ComponentContext& context, const char* name, int sample_interval_ms, float hysteresis = 0.0f, SensorClass sclass = SensorClass::Undefined) :
-        HACompBase(context, name),
+    HAComponent(ComponentContext& context, const char* id, const char* name, int sample_interval_ms, float hysteresis = 0.0f, SensorClass sclass = SensorClass::Undefined, const char* icon = nullptr) :
+        HACompBase(context, id, name),
         m_sample_interval(sample_interval_ms),
         m_sensor_class(sclass),
         m_hysteresis(hysteresis),
         m_sum(0.f),
         m_last_ts(0),
         m_samples(0)
-    { }
-
+    { 
+        m_icon = icon;
+    }
 
     void Update(float value);
     float GetCurrent();
@@ -189,7 +215,7 @@ protected:
 
     virtual void getConfigInfo(JsonObject& json);
 public:
-    HAComponent(ComponentContext& context, const char* name, std::function<void(boolean)> callback);
+    HAComponent(ComponentContext& context, const char* id, const char* name, std::function<void(boolean)> callback, const char* icon = nullptr);
 
     void Initialize() override;
     void SetState(bool state);
@@ -210,10 +236,12 @@ protected:
 
     virtual void getConfigInfo(JsonObject& json);
 public:
-    HAComponent(ComponentContext& context, const char* name, BinarySensorClass sensor_class = BinarySensorClass::Undefined) :
-        HACompBase(context, name),
+    HAComponent(ComponentContext& context, const char* id, const char* name, BinarySensorClass sensor_class = BinarySensorClass::Undefined, const char* icon = nullptr) :
+        HACompBase(context, id, name),
         m_sensor_class(sensor_class)
-    { }
+    {
+        m_icon = icon;
+    }
 
     void ReportState(bool state);
 };
