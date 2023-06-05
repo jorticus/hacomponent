@@ -35,7 +35,7 @@ HAAvailabilityComponent*                        HAAvailabilityComponent::inst = 
 const char*                                     HAAvailabilityComponent::ONLINE = "online";
 const char*                                     HAAvailabilityComponent::OFFLINE = "offline";
 
-void HAComponentManager::OnMessageReceived(char* topic, byte* payload, unsigned int length) {
+void HAComponentManager::onMessageReceived(char* topic, byte* payload, unsigned int length) {
     payload[length] = '\0';
 
     // Debug.print("MQTT RX: ");
@@ -43,7 +43,7 @@ void HAComponentManager::OnMessageReceived(char* topic, byte* payload, unsigned 
 
     String topic_s(topic);
     String payload_s((char*)payload);
-    HAComponent<Component::Switch>::ProcessMqttTopic(topic_s, payload_s);
+    HAComponent<Component::Switch>::processMqttTopic(topic_s, payload_s);
 }
 
 static void getDeviceInfo(JsonObject& json, ComponentContext& context) {
@@ -68,22 +68,8 @@ void HACompBase<c>::getConfigInfo(JsonObject& json)
 {
 }
 
-// template<Component c>
-// String HACompBase<c>::getStatusTopic(JsonObject& json)
-// {
-//     char state_topic[TOPIC_BUFFER_SIZE];
-
-//     snprintf(state_topic, sizeof(state_topic), 
-//         "%s/%s/%s/state\0", 
-//         config.device_name,
-//         m_component, 
-//         m_id);
-
-//     return String(state_topic);
-// }
-
 template<Component c>
-void HACompBase<c>::Initialize()
+void HACompBase<c>::initialize()
 {
     char state_topic[TOPIC_BUFFER_SIZE];
     snprintf(state_topic, sizeof(state_topic), 
@@ -94,7 +80,7 @@ void HACompBase<c>::Initialize()
 
 // Generic publish implementation used for all component types
 template<Component c>
-void HACompBase<c>::PublishConfig(bool present)
+void HACompBase<c>::publishConfig(bool present)
 {
     // Generic implementation
     char topic[TOPIC_BUFFER_SIZE];
@@ -169,7 +155,7 @@ void HACompBase<c>::PublishConfig(bool present)
 
         // And finally clear the current state
         // (so it's clear the last retained sensor value is no longer valid)
-        ClearState();
+        clearState();
     }
 
     //Led::SetBuiltin(false);
@@ -184,9 +170,9 @@ HAComponent<Component::Switch>::HAComponent(ComponentContext& context, const cha
     HAComponent<Component::Switch>::m_switches.push_back(this);
 }
 
-void HAComponent<Component::Switch>::Initialize()
+void HAComponent<Component::Switch>::initialize()
 {
-    HACompBase<Component::Switch>::Initialize();
+    HACompBase<Component::Switch>::initialize();
 
     char cmd_topic[TOPIC_BUFFER_SIZE];
     snprintf(cmd_topic, sizeof(cmd_topic), 
@@ -204,32 +190,32 @@ void HAComponent<Component::Switch>::getConfigInfo(JsonObject& json)
 
     context.client.subscribe(m_cmd_topic.c_str());
 
-    ReportState();
+    reportState();
 }
 
-void HAComponent<Component::Switch>::SetState(bool state)
+void HAComponent<Component::Switch>::setState(bool state)
 {
     m_state = state;
     m_callback(state);
 
-    ReportState();
+    reportState();
 }
 
-void HAComponent<Component::Switch>::ReportState()
+void HAComponent<Component::Switch>::reportState()
 {
     context.client.publish(m_state_topic.c_str(), (m_state ? ON : OFF), true);
 }
 
-void HAComponent<Component::Switch>::ProcessMqttTopic(String& topic, String& value)
+void HAComponent<Component::Switch>::processMqttTopic(String& topic, String& value)
 {
     for (auto* sw : m_switches) {
         //Debug.print("CHECK: "); Debug.println(sw->m_cmd_topic);
         if (sw->m_cmd_topic == topic) {
             if (value.equalsIgnoreCase(ON)) {
-                sw->SetState(true);
+                sw->setState(true);
             }
             else if (value.equalsIgnoreCase(OFF)) {
-                sw->SetState(false);
+                sw->setState(false);
             }
             else {
                 Debug.print("Invalid payload received for switch: ");
@@ -298,7 +284,7 @@ void HAComponent<Component::Sensor>::getConfigInfo(JsonObject& json)
 
 // Generic publish implementation for sending sensor readings
 template<Component c>
-void HACompBase<c>::PublishState(const char* value, bool retain)
+void HACompBase<c>::publishState(const char* value, bool retain)
 {
     //Led::SetBuiltin(true);
 
@@ -314,7 +300,7 @@ void HACompBase<c>::PublishState(const char* value, bool retain)
 }
 
 template<Component c>
-void HACompBase<c>::ClearState()
+void HACompBase<c>::clearState()
 {
     // Un-publish the state topic
     // IMPORTANT: Use 4-arg overload. The 2 & 3-arg overloads try to call strlen() on payload
@@ -322,7 +308,7 @@ void HACompBase<c>::ClearState()
 }
 
 // Sensor reading publish implementation
-void HAComponent<Component::Sensor>::Update(float value)
+void HAComponent<Component::Sensor>::update(float value)
 {
     // Ensure value is not NaN or Infinity
     if (!std::isfinite(value)) {
@@ -349,12 +335,12 @@ void HAComponent<Component::Sensor>::Update(float value)
             m_last_value = avg_value;
 
             String value_s(avg_value);
-            HACompBase<Component::Sensor>::PublishState(value_s.c_str());
+            HACompBase<Component::Sensor>::publishState(value_s.c_str());
         }
     }
 }
 
-float HAComponent<Component::Sensor>::GetCurrent()
+float HAComponent<Component::Sensor>::getCurrent()
 {
     return m_last_value;
 }
@@ -379,9 +365,9 @@ void HAComponent<Component::BinarySensor>::getConfigInfo(JsonObject& json)
     }
 }
 
-void HAComponent<Component::BinarySensor>::ReportState(bool state)
+void HAComponent<Component::BinarySensor>::reportState(bool state)
 {
-    PublishState(state ? "ON" : "OFF");
+    publishState(state ? "ON" : "OFF");
 }
 
 HAAvailabilityComponent::HAAvailabilityComponent(ComponentContext& context)
@@ -390,7 +376,7 @@ HAAvailabilityComponent::HAAvailabilityComponent(ComponentContext& context)
     HAAvailabilityComponent::inst = this;
 }
 
-void HAAvailabilityComponent::Initialize()
+void HAAvailabilityComponent::initialize()
 {
     char state_topic[TOPIC_BUFFER_SIZE];
     snprintf(state_topic, sizeof(state_topic), 
@@ -413,9 +399,9 @@ String HAAvailabilityComponent::getWillTopic()
     return m_state_topic;
 }
 
-void HAAvailabilityComponent::Connect()
+void HAAvailabilityComponent::connect()
 {
-    PublishState(ONLINE);
+    publishState(ONLINE);
 }
 
 // Explicit template instantiations. Required to make the CPP linker happy

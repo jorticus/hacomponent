@@ -104,27 +104,27 @@ class HACompItem
 protected:
     static std::vector<HACompItem*> m_components;
 
-    virtual void Initialize() = 0;
-    virtual void PublishConfig(bool present) = 0;
+    virtual void initialize() = 0;
+    virtual void publishConfig(bool present) = 0;
 };
 
 // Manager class for interacting with all registered components
 class HAComponentManager: public HACompItem
 {
 public:
-    static void InitializeAll() {
+    static void initializeAll() {
         for (auto item : HACompItem::m_components) {
-            item->Initialize();
+            item->initialize();
         }
     }
 
-    static void PublishConfigAll(bool present = true) {
+    static void publishConfigAll(bool present = true) {
         for (auto item : HACompItem::m_components) {
-            item->PublishConfig(present);
+            item->publishConfig(present);
         }
     }
 
-    static void OnMessageReceived(char* topic, byte* payload, unsigned int length);
+    static void onMessageReceived(char* topic, byte* payload, unsigned int length);
 };
 
 // Base class to get around templating quirks. Do not use directly.
@@ -151,11 +151,11 @@ public:
         m_components.push_back(this);
     }
 
-    void Initialize() override;
-    void PublishConfig(bool present = true) override;
+    void initialize() override;
+    void publishConfig(bool present = true) override;
 
-    void PublishState(const char* value, bool retain = true);
-    void ClearState();
+    void publishState(const char* value, bool retain = true);
+    void clearState();
 };
 
 // Generic Component
@@ -198,14 +198,15 @@ public:
         m_icon = icon;
     }
 
-    void Update(float value);
-    float GetCurrent();
+    void update(float value);
+    float getCurrent();
 };
 
 // Specialization of Component of type Switch
 template<>
 class HAComponent<Component::Switch> : public HACompBase<Component::Switch>
 {
+    friend class HAComponentManager;
 protected:
     bool m_state;
     String m_cmd_topic;
@@ -217,14 +218,15 @@ protected:
 public:
     HAComponent(ComponentContext& context, const char* id, const char* name, std::function<void(boolean)> callback, const char* icon = nullptr);
 
-    void Initialize() override;
-    void SetState(bool state);
-    void ReportState();
+    void initialize() override;
+    void setState(bool state);
+    void reportState();
 
     static const char* ON;
     static const char* OFF;
 
-    static void ProcessMqttTopic(String& topic, String& payload);
+protected:
+    static void processMqttTopic(String& topic, String& payload);
 };
 
 // Specialization of Component of type BinarySensor
@@ -243,7 +245,7 @@ public:
         m_icon = icon;
     }
 
-    void ReportState(bool state);
+    void reportState(bool state);
 };
 
 // Device availability component
@@ -258,8 +260,8 @@ public:
     static const char* OFFLINE;
 
     String getWillTopic();
-    void Initialize() override;
-    void Connect();
+    void initialize() override;
+    void connect();
 
     static HAAvailabilityComponent* inst;
 };
