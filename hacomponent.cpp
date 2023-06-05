@@ -46,6 +46,33 @@ void HAComponentManager::onMessageReceived(char* topic, byte* payload, unsigned 
     HAComponent<Component::Switch>::processMqttTopic(topic_s, payload_s);
 }
 
+bool HAComponentManager::connectClientWithAvailability(PubSubClient& client, const char* id, const char* user, const char* password) {
+    HAAvailabilityComponent* avail = HAAvailabilityComponent::inst;
+    if (avail != nullptr) {
+        String will_topic 		= avail->getWillTopic();
+        const char* will_msg 	= HAAvailabilityComponent::OFFLINE;
+        uint8_t will_qos 		= 0;
+        bool will_retain 		= true;
+
+        bool connected = client.connect(
+            id, user, password,
+            will_topic.c_str(), will_qos, will_retain, will_msg
+        );
+
+        if (connected) {
+            // Report alive status to availability topic
+            avail->connect();
+        }
+        return connected;
+    }
+    else {
+        return client.connect(
+            id, user, password
+        );
+    }
+    return false;
+}
+
 static void getDeviceInfo(JsonObject& json, ComponentContext& context) {
     auto& deviceInfo = json.createNestedObject("device");
 

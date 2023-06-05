@@ -1,9 +1,7 @@
-#ifndef __HA_COMPONENT_H__
-#define __HA_COMPONENT_H__
+#pragma once
 
 #include <Arduino.h>
 #include <vector>
-//#include "debug.h"
 #include <ArduinoJson.h>
 #include <PubSubClient.h>
 
@@ -49,7 +47,8 @@ enum class SensorClass {
     Illuminance,
     Temperature,
     Pressure,
-// Extra ones only used to add units (device_class == null)
+
+// Custom classes with predefined units (device_class == null)
     Dust,
     PPM,
     PPB
@@ -61,6 +60,7 @@ public:
     static const char* name;
 };
 
+// TODO: Need to define strings for these
 // https://github.com/home-assistant/home-assistant/blob/70ce9bb7bc15b1a66bb1d21598efd0bb8b102522/homeassistant/components/binary_sensor/__init__.py
 enum class BinarySensorClass {
     battery,       // On means low, Off means normal
@@ -89,12 +89,6 @@ enum class BinarySensorClass {
     Undefined
 };
 
-// template<BinarySensorClass c>
-// struct BinarySensorClassString {
-// public:
-//     static const char* name;
-// }
-
 // Abstract class that allows us to initialize and publish
 // any type of component
 class HACompItem
@@ -112,18 +106,28 @@ protected:
 class HAComponentManager: public HACompItem
 {
 public:
+    /// @brief Initialize all registered copmonents with the provided context.
+    /// MQTT connection is not required yet.
     static void initializeAll() {
         for (auto item : HACompItem::m_components) {
             item->initialize();
         }
     }
 
+    /// @brief Publish all registered components to HomeAssistant.
+    /// Requires an active MQTT connection.
+    /// @param present true to publish, false to unpublish
     static void publishConfigAll(bool present = true) {
         for (auto item : HACompItem::m_components) {
             item->publishConfig(present);
         }
     }
 
+    /// @brief Helper function for establishing MQTT connection with
+    //  appropriate will topics
+    static bool connectClientWithAvailability(PubSubClient& client, const char* id, const char* user, const char* password);
+
+    /// @brief Callback for receiving MQTT messages
     static void onMessageReceived(char* topic, byte* payload, unsigned int length);
 };
 
@@ -263,7 +267,6 @@ public:
     void initialize() override;
     void connect();
 
+    // Singleton
     static HAAvailabilityComponent* inst;
 };
-
-#endif /* __HA_COMPONENT_H__ */
