@@ -47,6 +47,9 @@ enum class SensorClass {
     Illuminance,
     Temperature,
     Pressure,
+    Energy,
+    Power,
+    Voltage,
 
 // Custom classes with predefined units (device_class == null)
     Dust,

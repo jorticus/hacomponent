@@ -17,6 +17,9 @@ template<>              const char* SensorClassString<SensorClass::Humidity>::na
 template<>              const char* SensorClassString<SensorClass::Battery>::name = "battery";
 template<>              const char* SensorClassString<SensorClass::Illuminance>::name = "illuminance";
 template<>              const char* SensorClassString<SensorClass::Pressure>::name = "pressure";
+template<>              const char* SensorClassString<SensorClass::Power>::name = "power";
+template<>              const char* SensorClassString<SensorClass::Energy>::name = "energy";
+template<>              const char* SensorClassString<SensorClass::Voltage>::name = "voltage";
 
 // template<BinarySensorClass c> const char* BinarySensorClass<c>::name = nullptr;
 // template<>                    const char* BinarySensorClass<BinarySensorClass::connectivity>::name = "connectivity";
@@ -288,6 +291,18 @@ void HAComponent<Component::Sensor>::getConfigInfo(JsonObject& json)
         case SensorClass::Pressure:
             device_class = SensorClassString<SensorClass::Pressure>::name;
             units = "mbar"; // "hPa"
+            break;
+        case SensorClass::Power:
+            device_class = SensorClassString<SensorClass::Power>::name;
+            units = "W";
+            break;
+        case SensorClass::Energy:
+            device_class = SensorClassString<SensorClass::Energy>::name;
+            units = "Wh";
+            break;
+        case SensorClass::Voltage:
+            device_class = SensorClassString<SensorClass::Voltage>::name;
+            units = "V";
             break;
         case SensorClass::Dust:
             device_class = nullptr;
