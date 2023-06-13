@@ -330,11 +330,11 @@ void HACompBase<c>::publishState(const char* value, bool retain)
 {
     //Led::SetBuiltin(true);
 
-    Debug.print("publish: ");
-    Debug.print(m_state_topic);
-    Debug.print(" ");
-    Debug.print("=");
-    Debug.println(value);
+    // Debug.print("publish: ");
+    // Debug.print(m_state_topic);
+    // Debug.print(" ");
+    // Debug.print("=");
+    // Debug.println(value);
 
     context.client.publish(m_state_topic.c_str(), value, retain);
 
